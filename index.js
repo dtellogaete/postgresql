@@ -1,62 +1,87 @@
-/* Importación de módulos */
-const express = require('express');
-const cors = require('cors');
+const express = require("express");
+const { Movies, Directors } = require("./models");
+const sequelize = require("./db.js"); // Asegúrate de que db.js exporta `sequelize`
 
-/* Import DB*/
-const { getMovies } = require('./db.js');
-const { testPoolConnection } = require('./db.js');
-const { testSingleConnection } = require('./db_simple.js')
-
-/* Configuración de servidor */
 const app = express();
-app.use(cors());
-app.use(express.json());
 
-/* Levantando el Servidor */
 const PORT = 3000;
+
+app.use(express.json()); // Middleware para permitir JSON en req.body
+
+
+const conectarDB = async () => {
+  try {
+    await sequelize.authenticate();
+    console.log("Conexión a la base de datos exitosa.");
+  } catch (error) {
+    console.error("Error al conectar a la base de datos:", error);
+  }
+};
+conectarDB();
+
+// Crear una película
+app.post("/movies", async (req, res) => {
+  try {
+    const { title, release_year, director_id } = req.body;
+
+    // Verificar si el director existe
+    const director = await Directors.findByPk(director_id);
+    if (!director) return res.status(404).json({ error: "Director no encontrado" });
+
+    const movie = await Movies.create({ title, release_year, director_id });
+    res.status(201).json(movie);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Obtener todas las películas con su director
+app.get("/movies", async (req, res) => {
+  try {
+    const movies = await Movies.findAll({ include: Directors });
+    res.json(movies);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Obtener una película por ID
+app.get("/movies/:id", async (req, res) => {
+  try {
+    const movie = await Movies.findByPk(req.params.id, { include: Directors });
+    if (!movie) return res.status(404).json({ error: "Película no encontrada" });
+    res.json(movie);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Actualizar una película
+app.put("/movies/:id", async (req, res) => {
+  try {
+    const movie = await Movies.findByPk(req.params.id);
+    if (!movie) return res.status(404).json({ error: "Película no encontrada" });
+    await movie.update(req.body);
+    res.json(movie);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Eliminar una película
+app.delete("/movies/:id", async (req, res) => {
+  try {
+    const movie = await Movies.findByPk(req.params.id);
+    if (!movie) return res.status(404).json({ error: "Película no encontrada" });
+
+    await movie.destroy();
+    res.json({ message: "Película eliminada" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Iniciar el servidor en el puerto 3000
 app.listen(PORT, () => {
-    console.log(`Servidor corriendo en puerto: ${PORT}`);
+  console.log(`Servidor ejecutándose en http://localhost:${PORT}`);
 });
-
-/* Endpoints*/
-app.get('/', (req, res) => {
-    res.send('Conexión a Postgresql');
-});
-
-app.get('/movies', async (req, res) => {
-    try {
-      const movies = await getMovies(req.query);
-  
-      res.status(200).json({
-        totalMovies: movies.length,
-        movies: movies.map(movie => ({
-          title: movie.title,
-          releaseYear: movie.release_year,          
-        })),
-      });
-    } catch (error) {
-      console.error(error);
-      res.status(500).send('Internal Server Error');
-    }
-});
-
-app.get('/test-simple', async (req, res) => {
-    try {
-        await testSingleConnection();
-        res.send('Consulta con conexión simple completada');
-    } catch (error) {
-        console.error('Error en test-single:', error);
-        res.status(500).send('Error en la consulta');
-    }
-});
-
-app.get('/test-pool', async (req, res) => {
-    try {
-        await testPoolConnection();
-        res.send('Consulta con Pooling completada');
-    } catch (error) {
-        console.error('Error en test-pool:', error);
-        res.status(500).send('Error en la consulta');
-    }
-});
-  
